@@ -1,39 +1,20 @@
-
-class SendMessedge(Exception):
+class ErorSendMessage(Exception):
     pass
-
-
-class BadHomeworkStatuse(Exception):
+class StatusNotCode(Exception):
     pass
-
-
-class KeyNotInDict(Exception):
+class ApiStatus(Exception):
     pass
-
-
-class StatusCodeNot200(Exception):
+class ResponseAnswerEmpty(Exception):
     pass
-
-
-class JsonNotDecode(Exception):
+class ResponseAnswerNotDict(TypeError):
     pass
-
-
-class NotResponse(Exception):
+class HomeworksNotKeys(Exception):
     pass
-
-
-class HomeworksNotInResponse(Exception):
+class ResponseAnswerNlist(TypeError):
     pass
-
-
-class BananaType(TypeError):
+class CheckApiResponseStat(Exception):
     pass
-
-
-class FantasyIsOver(Exception):
+class CheckApiResponseKey(Exception):
     pass
-
-
-class PetShopBoysError(IndexError):
+class CheckApiResponse(Exception):
     pass

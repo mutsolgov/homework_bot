@@ -1,8 +1,6 @@
 import logging
 import os
 import time
-from http import HTTPStatus
-
 import requests
 import telegram
 from dotenv import load_dotenv
@@ -42,81 +40,64 @@ def send_message(bot, message):
         logger.debug(f'Начало отправки сообщения в Telegram: {message}.')
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
     except telegram.TelegramError:
-        logger.error(f'Cбой при отправке сообщения в Telegram: {message}.')
-        raise exceptions.SendMessedge(
-            f'Cбой при отправке сообщения в Telegram: {message}.'
+        logger.error(
+            f'При отправке сообщения в Telegram произошел сбой: {message}.'
+        )
+        raise exceptions.ErorSendMessage(
+            f'При отправке сообщения в Telegram произошел сбой: {message}.'
         )
 
 
-def get_api_answer(current_timestamp: int) -> dict:
-    """Отправляем запрос к API и получаем список домашних работ.
-    Также проверяем, что эндпоинт отдает статус 200.
-    """
-    timestamp = current_timestamp or int(time.time())
-    params_request = {
-        'url': ENDPOINT,
-        'headers': HEADERS,
-        'params': {'from_date': timestamp},
-    }
-    message = ('Начало запроса к API. Запрос: {url}, {headers}, {params}.'
-               ).format(**params_request)
-    logging.info(message)
+def get_api_answer(timestamp):
+    """Проверяем список домашних работ."""
+    timestamp = timestamp or int(time.time())
+    params = {'from_date': timestamp}
     try:
-        response = requests.get(**params_request)
-        if response.status_code != HTTPStatus.OK:
-            raise exceptions.JsonNotDecode(
-                f'Ответ API не возвращает 200. '
-                f'Код ответа: {response.status_code}. '
-                f'Причина: {response.reason}. '
-                f'Текст: {response.text}.'
+        response = requests.get(ENDPOINT,
+                                headers=HEADERS,
+                                params=params)
+        if response.status_code != 200:
+            raise exceptions.StatusNotCode(
+                'Ошибка при запросе к API не возвращает статус 200.'
             )
         return response.json()
     except Exception as error:
-        message = ('API не возвращает 200. Запрос: {url}, {headers}, {params}.'
-                   ).format(**params_request)
-        raise exceptions.JsonNotDecode(message, error)
+        raise exceptions.ApiStatus(f'Какая то ошибка с API.{error}')
 
 
 def check_response(response):
     """Проверяет ответ API на корректность."""
-    logger.info('Проверяем ответ API на корректность.')
     if not response:
-        logger.error('Ответ от API - пустой словарь')
-        raise exceptions.NotResponse('Ответ от API - пустой словарь')
-    if type(response) is not dict:
-        logger.error('Ответ от API не в виде словаря')
-        raise exceptions.BananaType('Ответ от API не в виде словаря')
+        raise exceptions.ResponseAnswerEmpty('Пустой Ответ')
+    if not isinstance(response, dict):
+        raise exceptions.ResponseAnswerNotDict('Ответ от не в виде словаря')
     if 'homeworks' not in response:
-        logger.error('В ответе от API нет ключа homework')
-        raise exceptions.HomeworksNotInResponse(
-            'В ответе API нет ключа homework'
+        logger.error('В ответе от нет ключа homework')
+        raise exceptions.HomeworksNotKeys(
+            'В ответе нет ключа homework'
         )
-    homeworks_list = response['homeworks']
-    if type(homeworks_list) is not list:
-        logger.error('В ответе API нет списка работ')
-        raise exceptions.BananaType('В ответе API нет списка работ')
+    homeworks_list = response.get("homeworks")
+    if not isinstance(homeworks_list, list):
+        logger.error('В ответе нет списка работ')
+        raise exceptions.ResponseAnswerNlist('В ответе нет списка работ')
     return homeworks_list
 
 
 def parse_status(homework):
-    """
-    Получает данные о статусе выполнения домашней работы и возвращает.
-    строку с информацией о результате.
-    """
-    logger.info('Извлекаем информацию о конкретной домашней работе.')
-    required_fields = ['homework_name', 'status']
-    for field_name in required_fields:
-        if field_name not in homework:
-            logger.error(f'В homework нет ключа "{field_name}"')
-            raise KeyError(f'В homework нет ключа "{field_name}"')
-    homework_name = homework['homework_name']
-    homework_status = homework['status']
-    verdict = HOMEWORK_VERDICTS.get(homework_status)
-    if not verdict:
-        logger.error('Вердикта нет в "HOMEWORK_VERDICTS"')
-        raise exceptions.KeyNotInDict('Статуса нет в "HOMEWORK_VERDICTS"')
-    logger.info(f'Изменился статус проверки работы "{homework_name}".'
-                '{verdict}')
+    """Узнаем статус отправленного проекта."""
+    homework_name = homework.get('homework_name')
+    status = homework.get('status')
+    verdict = HOMEWORK_VERDICTS.get(status)
+    if not status:
+        raise exceptions.CheckApiResponseStat('Нет ответа от status')
+    if not homework_name:
+        raise exceptions.CheckApiResponseKey('Нет ответа от homework_name')
+
+    if status not in HOMEWORK_VERDICTS:
+        raise exceptions.CheckApiResponse(
+            'Получен некорректный статус работы.'
+        )
+
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
@@ -128,43 +109,38 @@ def get_current_timestamp():
 
 def check_tokens():
     """Проверяем доступность переменных окружения."""
-    logger.info('Проверяем доступность переменных окружения.')
+    logger.info('Проверяем доступность переменных окружений.')
     return all((PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID))
 
 
 def main():
     """Основная логика работы бота."""
     if not check_tokens():
-        logger.critical('Отсутсвуют переменные окружения')
-        raise KeyError('Отсутсвуют переменные окружения')
+        logger.critical('Отсутствует переменные окружения')
+        raise ValueError('Проверьте переменные окружения')
+        exit()
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    current_timestamp = int(time.time())
+    timestamp = int(time.time()) - 20192200
+    send_message(bot, 'Начало работы телеграмм бота')
     cache = []
     while True:
         try:
-            response = get_api_answer(current_timestamp)
-            homeworks_list = check_response(response)
-            try:
-                (homeworks_list[0])
-            except IndexError:
-                logger.critical('Нет новых работ на проверку :(')
-                raise exceptions.PetShopBoysError(
-                    'Нет новых работ на проверку :('
-                )
-            homework = homeworks_list[0]
-            message = parse_status(homework)
-            current_timestamp = response.get('current_date')
-        except Exception as error:
-            message = f'Сбой в работе телеграмм-бота: {error}'
-            logger.critical(
-                f'Уведомление об ошибке отправлено в чат {message}'
-            )
-        finally:
-            if message in cache:
-                logger.debug('Новых статусов нет')
+            response = get_api_answer(timestamp)
+            current_report = check_response(response)
+            if current_report:
+                send_message(bot, parse_status(current_report[0]))
             else:
-                cache.append(message)
+                message = "Новых статусов нет"
+                logging.debug(message)
+            if cache != message:
+                cache = message
                 send_message(bot, message)
+            else:
+                logging.info(message)
+        except Exception as error:
+            message = f'Сбой в работе программы: {error}'
+            logging.error(message)
+        finally:
             time.sleep(RETRY_PERIOD)
 
 

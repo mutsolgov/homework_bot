@@ -39,12 +39,9 @@ def send_message(bot, message):
     try:
         logger.debug(f'Начало отправки сообщения в Telegram: {message}.')
         bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=message)
-    except telegram.TelegramError:
+    except telegram.error.TelegramError as error:
         logger.error(
-            f'При отправке сообщения в Telegram произошел сбой: {message}.'
-        )
-        raise exceptions.ErorSendMessage(
-            f'При отправке сообщения в Telegram произошел сбой: {message}.'
+            f'При отправке сообщения в Telegram произошел сбой: {error}.'
         )
 
 

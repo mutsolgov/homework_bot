@@ -1,6 +1,8 @@
 import logging
 import os
 import time
+from http import HTTPStatus
+
 import requests
 import telegram
 from dotenv import load_dotenv
@@ -53,13 +55,17 @@ def get_api_answer(timestamp):
         response = requests.get(ENDPOINT,
                                 headers=HEADERS,
                                 params=params)
-        if response.status_code != 200:
+        if response.status_code != HTTPStatus.OK:
             raise exceptions.StatusNotCode(
                 'Ошибка при запросе к API не возвращает статус 200.'
             )
         return response.json()
-    except Exception as error:
-        raise exceptions.ApiStatus(f'Какая то ошибка с API.{error}')
+    except ValueError as e:
+        raise exceptions.InvalidJSONError(
+            f'Ошибка преобразования ответа в JSON: {e}'
+        )
+    except requests.RequestException as error:
+        raise exceptions.ApiStatus(f'Произошла ошибка:{error}')
 
 
 def check_response(response):
@@ -69,11 +75,14 @@ def check_response(response):
     if not isinstance(response, dict):
         raise exceptions.ResponseAnswerNotDict('Ответ от не в виде словаря')
     if 'homeworks' not in response:
-        logger.error('В ответе от нет ключа homework')
         raise exceptions.HomeworksNotKeys(
             'В ответе нет ключа homework'
         )
-    homeworks_list = response.get("homeworks")
+    if 'current_date' not in response:
+        raise exceptions.HomeworksNotKeysData(
+            'В ответе нет ключа current_date'
+        )
+    homeworks_list = response.get("homeworks", "current_date")
     if not isinstance(homeworks_list, list):
         logger.error('В ответе нет списка работ')
         raise exceptions.ResponseAnswerNlist('В ответе нет списка работ')
@@ -115,13 +124,12 @@ def main():
     if not check_tokens():
         logger.critical('Отсутствует переменные окружения')
         raise ValueError('Проверьте переменные окружения')
-        exit()
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
-    timestamp = int(time.time()) - 20192200
     send_message(bot, 'Начало работы телеграмм бота')
     cache = []
     while True:
         try:
+            timestamp = int(time.time())
             response = get_api_answer(timestamp)
             current_report = check_response(response)
             if current_report:

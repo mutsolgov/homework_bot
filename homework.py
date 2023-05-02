@@ -2,6 +2,7 @@ import logging
 import os
 import time
 from http import HTTPStatus
+import json
 
 import requests
 import telegram
@@ -60,7 +61,7 @@ def get_api_answer(timestamp):
                 'Ошибка при запросе к API не возвращает статус 200.'
             )
         return response.json()
-    except ValueError as e:
+    except json.JSONDecodeError as e:
         raise exceptions.InvalidJSONError(
             f'Ошибка преобразования ответа в JSON: {e}'
         )
@@ -84,7 +85,6 @@ def check_response(response):
         )
     homeworks_list = response.get("homeworks", "current_date")
     if not isinstance(homeworks_list, list):
-        logger.error('В ответе нет списка работ')
         raise exceptions.ResponseAnswerNlist('В ответе нет списка работ')
     return homeworks_list
 
@@ -126,14 +126,15 @@ def main():
         raise ValueError('Проверьте переменные окружения')
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
     send_message(bot, 'Начало работы телеграмм бота')
+    timestamp = int(time.time())
     cache = []
     while True:
         try:
-            timestamp = int(time.time())
             response = get_api_answer(timestamp)
             current_report = check_response(response)
             if current_report:
                 send_message(bot, parse_status(current_report[0]))
+                timestamp = response.get('current_date')
             else:
                 message = "Новых статусов нет"
                 logging.debug(message)
